@@ -1,0 +1,12 @@
+runs/
+out/
+stim/
+__pycache__/
+*.pyc
+obj_dir/
+*.vcd
+*.fst
+*.vvp
+*.log
+.DS_Store
+build/

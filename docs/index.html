@@ -1,0 +1,931 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChromaPS — surface shape from a single shot</title>
+<meta name="description" content="A single-shot colour-multiplexed photometric stereo core in SkyWater 130 nm: one photograph in, surface normals and relighting out.">
+<meta name="theme-color" content="#0b0a09">
+<link rel="stylesheet" href="style.css?v=2">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top">ChromaPS</a>
+    <div class="nav-links">
+      <a href="#method">Method</a>
+      <a href="#silicon">Silicon</a>
+      <a href="#results">Results</a>
+      <a href="#cases">Cases</a>
+      <a href="#speed">Speed</a>
+      <a class="nav-pill" href="#reproduce">Reproduce</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <img class="hero-bg" src="img/hero_bg.png" alt="">
+  <div class="hero-shade"></div>
+  <div class="hero-inner">
+    <p class="kicker">sky130A &middot; LibreLane 2.4.2 &middot; 1.25&nbsp;mm&sup2;</p>
+    <h1>Surface shape, from a single shot.</h1>
+    <p class="sub">
+      Three coloured lights, one photograph, and a small core that returns
+      per-pixel normals, albedo, and relighting under any lamp you like.
+    </p>
+    <div class="actions">
+      <a class="btn btn--solid" href="#method">Method</a>
+      <a class="btn" href="#results">Results</a>
+      <a class="btn" href="#reproduce">Reproduce</a>
+    </div>
+    <p class="hero-meta">RTL &rarr; GDSII &middot; 77,268 cells &middot; 40 MHz at every corner &middot; DRC 0 / LVS 0</p>
+  </div>
+  <div class="cue"></div>
+</header>
+
+<main>
+
+<section class="sec" id="idea">
+  <div class="wrap">
+    <p class="eyebrow">01 &mdash; The idea</p>
+    <h2>Photometric stereo without the extra frames</h2>
+    <p class="lede">
+      Classic photometric stereo recovers shape from three photographs of the
+      same object under three different lights. Three exposures, three
+      synchronised flashes, and an object that holds still.
+    </p>
+    <div class="cols">
+      <div>
+        <p class="muted">
+          ChromaPS puts the three lights in three different colours and takes
+          <em>one</em> exposure. Each pixel's red, green and blue values are
+          three independent measurements of the same surface point, so a fixed
+          3&times;3 calibration matrix can untangle them.
+        </p>
+      </div>
+      <div>
+        <p class="muted">
+          The result is the surface normal scaled by its albedo. No frame
+          buffer, no host round-trip: one pixel per clock, fifty clocks of
+          latency, and nothing stored on chip.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec sec--soft" id="method">
+  <div class="wrap">
+    <p class="eyebrow">02 &mdash; Method</p>
+    <h2>Four lines of arithmetic</h2>
+    <div class="eq">
+      m = [ I<sub>R</sub> , I<sub>G</sub> , I<sub>B</sub> ]<sup>T</sup><br>
+      g = <span class="hl">A</span> &middot; m <span class="c">&nbsp;&nbsp;# A = (C &middot; S &middot; L)<sup>-1</sup>, folded offline</span><br>
+      &rho; = |g| <span class="c">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# albedo</span><br>
+      n = g / &rho; <span class="c">&nbsp;&nbsp;&nbsp;&nbsp;# unit normal</span><br>
+      I<sub>v</sub> = max(0, g &middot; l<sub>v</sub>) <span class="c">&nbsp;# relight, no normalisation</span>
+    </div>
+    <p class="muted" style="margin-top:26px">
+      <code>A</code> absorbs the camera's spectral response, the LED spectra and
+      the light directions, so the same silicon works with any rig that has been
+      calibrated once &mdash; including the redesigned light layout in the test
+      set. The relighting identity is the useful accident: the dot product with
+      a virtual light acts on <code>g</code> directly, which is why a re-lit
+      image costs three multipliers and nothing else.
+    </p>
+  </div>
+</section>
+
+<section class="sec" id="datapath">
+  <div class="wrap">
+    <p class="eyebrow">03 &mdash; Datapath</p>
+    <h2>A fifty-cycle pipeline with no memory</h2>
+<figure class="pipeline">
+<svg id="schedule" viewBox="0 0 1060 450" role="img" aria-label="Cycle-by-cycle schedule of the datapath">
+<g font-family="-apple-system, Helvetica, sans-serif">
+<g font-size="10" fill="#7e766a">
+  <text x="132" y="34" text-anchor="start">0</text>
+  <text x="219" y="34" text-anchor="middle">5</text>
+  <text x="306" y="34" text-anchor="middle">10</text>
+  <text x="392" y="34" text-anchor="middle">15</text>
+  <text x="479" y="34" text-anchor="middle">20</text>
+  <text x="566" y="34" text-anchor="middle">25</text>
+  <text x="653" y="34" text-anchor="middle">30</text>
+  <text x="740" y="34" text-anchor="middle">35</text>
+  <text x="826" y="34" text-anchor="middle">40</text>
+  <text x="913" y="34" text-anchor="middle">45</text>
+  <text x="1000" y="34" text-anchor="middle">50</text>
+  <text x="1056" y="34" text-anchor="end" fill="#5f574c">cycles</text>
+</g>
+<g stroke="#26221d" stroke-width="1">
+  <line x1="132" y1="42" x2="1000" y2="42"/>
+  <line x1="132.0" y1="42" x2="132.0" y2="392"/>
+  <line x1="218.8" y1="42" x2="218.8" y2="392"/>
+  <line x1="305.6" y1="42" x2="305.6" y2="392"/>
+  <line x1="392.4" y1="42" x2="392.4" y2="392"/>
+  <line x1="479.2" y1="42" x2="479.2" y2="392"/>
+  <line x1="566.0" y1="42" x2="566.0" y2="392"/>
+  <line x1="652.8" y1="42" x2="652.8" y2="392"/>
+  <line x1="739.6" y1="42" x2="739.6" y2="392"/>
+  <line x1="826.4" y1="42" x2="826.4" y2="392"/>
+  <line x1="913.2" y1="42" x2="913.2" y2="392"/>
+  <line x1="1000.0" y1="42" x2="1000.0" y2="392"/>
+  <line x1="1000" y1="42" x2="1000" y2="392" stroke="#3b352c"/>
+</g>
+<rect x="201.4" y="44" width="763.8" height="344" fill="rgba(95,183,171,.035)"/>
+<text x="204.4" y="57" font-size="8.5" fill="#4f6b66" letter-spacing="1.3">TWO EXACT INTEGER DIVISIONS</text>
+  <rect class="bar solve" data-s="0" data-e="1" data-w="17.36" x="132.0" y="60" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="132.0" y="60" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="1" data-e="2" data-w="17.36" x="149.4" y="89" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="149.4" y="89" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="2" data-e="3" data-w="17.36" x="166.7" y="118" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="166.7" y="118" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="3" data-e="4" data-w="17.36" x="184.1" y="147" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="184.1" y="147" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="4" data-e="21" data-w="295.12" x="201.4" y="176" width="295.12" height="20" rx="2"/>
+  <rect class="fill solve" x="201.4" y="176" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="21" data-e="48" data-w="468.72" x="496.6" y="205" width="468.72" height="20" rx="2"/>
+  <rect class="fill solve" x="496.6" y="205" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="48" data-e="49" data-w="17.36" x="965.3" y="234" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="965.3" y="234" width="0" height="20" rx="2"/>
+  <rect class="bar solve" data-s="49" data-e="50" data-w="17.36" x="982.6" y="263" width="17.36" height="20" rx="2"/>
+  <rect class="fill solve" x="982.6" y="263" width="0" height="20" rx="2"/>
+  <rect class="bar relight" data-s="3" data-e="5" data-w="34.72" x="184.1" y="344" width="34.72" height="20" rx="2"/>
+  <rect class="fill relight" x="184.1" y="344" width="0" height="20" rx="2"/>
+  <rect class="bar relight" data-s="48" data-e="50" data-w="34.72" x="965.3" y="344" width="34.72" height="20" rx="2"/>
+  <rect class="fill relight" x="965.3" y="344" width="0" height="20" rx="2"/>
+  <rect class="bar ctrl" data-s="3" data-e="5" data-w="34.72" x="184.1" y="374" width="34.72" height="20" rx="2"/>
+  <rect class="fill ctrl" x="184.1" y="374" width="0" height="20" rx="2"/>
+  <rect class="bar ctrl" data-s="48" data-e="50" data-w="34.72" x="965.3" y="374" width="34.72" height="20" rx="2"/>
+  <rect class="fill ctrl" x="965.3" y="374" width="0" height="20" rx="2"/>
+<g id="ph" opacity="0">
+  <line x1="132" y1="42" x2="132" y2="392" stroke="#d2764b" stroke-width="1.2" stroke-opacity=".85"/>
+  <circle cx="132" cy="42" r="3" fill="#d2764b"/>
+</g>
+<g font-size="11.5" fill="#cfc7b8" text-anchor="end">
+  <text x="122" y="75">white balance</text>
+  <text x="122" y="104">A &middot; I</text>
+  <text x="122" y="133">g = &rho;n</text>
+  <text x="122" y="162">|g|&sup2;</text>
+  <text x="122" y="191">isqrt</text>
+  <text x="122" y="220">1 / &rho;</text>
+  <text x="122" y="249">n = g/&rho;</text>
+  <text x="122" y="278">encode</text>
+  <text x="122" y="358">relight &times;2</text>
+  <text x="122" y="388">flags</text>
+</g>
+<g font-size="10" fill="#bfe4dc">
+  <text x="213" y="190">17 stages</text>
+  <text x="508" y="219">27 stages</text>
+</g>
+<g stroke="#3b352c"><line x1="201.4" y1="296" x2="965.3" y2="296"/><line x1="201.4" y1="291" x2="201.4" y2="296"/><line x1="965.3" y1="291" x2="965.3" y2="296"/></g>
+<text x="583" y="312" font-size="10" fill="#a29a8c" text-anchor="middle">44 of the 50 cycles are two exact integer divisions</text>
+<line x1="218.8" y1="354.0" x2="965.3" y2="354.0" stroke="#6b4a34" stroke-width="1.2" stroke-dasharray="4 5"/>
+<text x="592" y="336" font-size="9.5" fill="#8a6a4e" text-anchor="middle">held in a register delay line</text>
+<line x1="218.8" y1="384.0" x2="965.3" y2="384.0" stroke="#3f3931" stroke-width="1.2" stroke-dasharray="4 5"/>
+<g font-size="10.5" fill="#a29a8c">
+  <text class="out-label" x="1012" y="73">normal</text>
+  <text class="out-label" x="1012" y="357">relight</text>
+  <text class="out-label" x="1012" y="387">confidence</text>
+</g>
+<g font-size="10" fill="#8a8175">
+<rect x="132" y="414" width="10" height="10" fill="rgba(95,183,171,.3)" stroke="#5fb7ab"/>
+<text x="150" y="423">solve path</text>
+<rect x="242" y="414" width="10" height="10" fill="rgba(210,118,75,.3)" stroke="#d2764b"/>
+<text x="260" y="423">relight path</text>
+<line x1="360" y1="419" x2="394" y2="419" stroke="#6b4a34" stroke-dasharray="4 5"/>
+<text x="402" y="423">register delay</text>
+<text x="1000" y="423" text-anchor="end" fill="#5f574c">one pixel per cycle &middot; no memory</text>
+</g>
+</g></svg>
+  <figcaption>
+    <b>One pixel's schedule.</b> Bars are drawn to scale against the cycle
+    ruler. The integer square root and reciprocal own 44 of the 50 cycles;
+    everything else is a handful of multipliers. The relight and confidence
+    branches are finished by cycle 5 and then simply wait, which is why a second
+    virtual light costs almost nothing.
+  </figcaption>
+</figure>
+    <p class="muted" style="margin-top:30px">
+      The square root and the reciprocal are exact integer operations, which is
+      what makes the verification below meaningful: the RTL and the Python model
+      agree byte for byte, so the numbers come from the hardware, not from a
+      tolerance.
+    </p>
+  </div>
+</section>
+
+<section class="sec sec--soft" id="silicon">
+  <div class="wrap">
+    <p class="eyebrow">04 &mdash; Silicon</p>
+    <h2>What it costs in 130&nbsp;nm</h2>
+    <div class="stats">
+      <div class="stat"><div class="n">1.245 mm&sup2;</div><div class="l">core area</div></div>
+      <div class="stat"><div class="n">77,268</div><div class="l">standard cells</div></div>
+      <div class="stat"><div class="n">25 ns</div><div class="l">clock, all corners</div></div>
+      <div class="stat"><div class="n">0 / 0</div><div class="l">DRC / LVS</div></div>
+    </div>
+
+    <figure class="diemap">
+      <div class="die-figure">
+        <div class="die-stage" id="die-stage">
+          <img class="die-base" src="img/gds.png" alt="ChromaPS die, rendered from the GDSII">
+          <img class="die-layer" data-layer="routing" src="img/die/routing.webp" alt="">
+          <img class="die-layer" data-layer="placement" src="img/die/placement.webp" alt="">
+          <img class="die-layer" data-layer="pdn" src="img/die/pdn.png" alt="">
+          <img class="die-layer" data-layer="clock" src="img/die/clock.png" alt="">
+          <img class="die-layer" data-layer="clockcells" src="img/die/clockcells.png" alt="">
+          <img class="die-layer" data-layer="diodes" src="img/die/diodes.png" alt="">
+          <img class="die-layer" data-layer="cells" src="img/die/cells.png" alt="">
+          <img class="die-layer on" data-layer="power" src="img/die/power.webp" alt="">
+          <div class="die-probe" id="die-probe"></div>
+        </div>
+        <div class="die-panel">
+          <label class="die-opacity">
+            <span>layer opacity</span>
+            <input type="range" id="die-alpha" min="20" max="100" value="90">
+          </label>
+          <div class="die-legend" id="die-legend">
+            <button class="dl-row on" data-layer="power">
+              <span class="dl-dot dl-power"></span>
+              <span class="dl-name">switching power</span>
+              <span class="dl-stat">7.1 &micro;W peak per bin</span>
+            </button>
+            <button class="dl-row" data-layer="clock">
+              <span class="dl-dot dl-clock"></span>
+              <span class="dl-name">clock tree</span>
+              <span class="dl-stat">790 nets &middot; 0.48&ndash;0.97 ns</span>
+            </button>
+            <button class="dl-row" data-layer="clockcells">
+              <span class="dl-dot dl-buf"></span>
+              <span class="dl-name">clock buffers</span>
+              <span class="dl-stat">3,603 cells</span>
+            </button>
+            <button class="dl-row" data-layer="cells">
+              <span class="dl-dot dl-cells"></span>
+              <span class="dl-name">cell classes</span>
+              <span class="dl-stat">69,736 logic &middot; 13,041 flops</span>
+            </button>
+            <button class="dl-row" data-layer="diodes">
+              <span class="dl-dot dl-dio"></span>
+              <span class="dl-name">antenna diodes</span>
+              <span class="dl-stat">680 cells</span>
+            </button>
+            <button class="dl-row" data-layer="routing">
+              <span class="dl-dot dl-routing"></span>
+              <span class="dl-name">routing density</span>
+              <span class="dl-stat">1.72 m of metal</span>
+            </button>
+            <button class="dl-row" data-layer="placement">
+              <span class="dl-dot dl-place"></span>
+              <span class="dl-name">placement density</span>
+              <span class="dl-stat">cell area per bin</span>
+            </button>
+            <button class="dl-row" data-layer="pdn">
+              <span class="dl-dot dl-pdn"></span>
+              <span class="dl-name">power grid</span>
+              <span class="dl-stat">VPWR / VGND straps</span>
+            </button>
+          </div>
+          <p class="die-tip">Hover the die to probe a 14&nbsp;&micro;m bin &mdash; power,
+            routing and cell count under the cursor.</p>
+        </div>
+      </div>
+      <figcaption>
+        <b>One die, eight readings.</b> The base is the stream file the flow
+        signed off with; every layer is computed from the design database.
+        Power is gate-level activity times the SPEF capacitance, so the bright
+        clouds are where the switching actually happens, not where the cells are
+        densest.
+      </figcaption>
+    </figure>
+
+    <p class="muted" style="margin-top:22px">
+      Typical corner closes at 25 ns with 13.6 ns to spare, but the slow corner
+      is what gets signed off, so the headline number is 40 MHz.
+    </p>
+    <p class="muted">
+      The power figure is the static one: every net at the tool's default toggle
+      rate, which is a placeholder, not a measurement. A gate-level run on a real
+      frame gives the activity instead &mdash; 58,076 nets, 160 cycles, 283,967
+      transitions, or 0.031 per net per cycle against the 0.1 that the default
+      assumes. So 0.85&nbsp;W is a ceiling; a properly annotated number needs
+      pin-level activity, which this open-source flow does not extract.
+    </p>
+  </div>
+</section>
+
+
+
+<section class="sec" id="results">
+  <div class="wrap">
+    <p class="eyebrow">05 &mdash; Verification</p>
+    <h2>Three implementations, one answer</h2>
+    <p class="lede">
+      Every case is generated by a ray tracer, scored by an independent
+      fixed-point model, and then run through the RTL. The comparison is a plain
+      byte diff of the five output channels.
+    </p>
+    <table>
+      <thead>
+        <tr>
+          <th>Case</th><th class="n">RTL vs model</th><th class="n">Confident</th>
+          <th class="n">Mean err</th><th class="n">p95</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>plate &mdash; embossed surface, printed albedo</td><td class="n ok">bit-exact</td><td class="n">100%</td><td class="n">0.31&deg;</td><td class="n">0.67&deg;</td></tr>
+        <tr><td>sphere &mdash; ring illumination around the lens</td><td class="n ok">bit-exact</td><td class="n">94%</td><td class="n">0.22&deg;</td><td class="n">0.40&deg;</td></tr>
+        <tr><td>bumps &mdash; high-frequency relief</td><td class="n ok">bit-exact</td><td class="n">100%</td><td class="n">0.23&deg;</td><td class="n">0.43&deg;</td></tr>
+        <tr><td>tilted &mdash; different calibration matrix</td><td class="n ok">bit-exact</td><td class="n">100%</td><td class="n">0.39&deg;</td><td class="n">0.85&deg;</td></tr>
+        <tr><td>noise &mdash; sensor noise added to the capture</td><td class="n ok">bit-exact</td><td class="n">100%</td><td class="n">5.25&deg;</td><td class="n">12.7&deg;</td></tr>
+        <tr><td>dark &mdash; 30% exposure</td><td class="n ok">bit-exact</td><td class="n">50%</td><td class="n">0.53&deg;</td><td class="n">0.95&deg;</td></tr>
+        <tr><td>studio &mdash; specular, vignette, grain</td><td class="n ok">bit-exact</td><td class="n">99.9%</td><td class="n">1.54&deg;</td><td class="n">3.78&deg;</td></tr>
+        <tr><td>edge &mdash; saturation, shadow, zero signal</td><td class="n ok">bit-exact</td><td class="n">0%</td><td class="n">&mdash;</td><td class="n">&mdash;</td></tr>
+      </tbody>
+    </table>
+    <p class="muted" style="margin-top:22px">
+      The angular error is measured against the ray tracer's own normals, which
+      neither the model nor the RTL has seen. The noise row is the honest one:
+      the arithmetic stays bit-exact, but noisy input moves the normals and the
+      confidence channel does not catch it. The <em>tilted</em> row exists to
+      prove that the matrix really is loaded from configuration instead of being
+      baked into the RTL.
+    </p>
+    <figure class="real">
+      <img src="img/case_real.png" alt="Real capture: three photographs, ground truth normals, chip output and a relit image">
+      <figcaption>
+        <b>Real photographs.</b> Three frames of a figurine from the
+        <a href="http://vision.seas.harvard.edu/qsfs/Data.html">Harvard
+        photometric stereo set</a> &mdash; 20 calibrated lights, ground-truth
+        normals &mdash; stacked into one RGB image. Against that ground truth the
+        fixed-point output is <b>2.83&deg; median, 5.05&deg; mean</b> over the
+        object, within 0.04&deg; of a float least squares on the same pixels.
+        The RTL matches the model on all <b>320,000</b> pixels of this frame too.
+      </figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="sec sec--soft" id="cases">
+  <div class="wrap">
+    <p class="eyebrow">06 &mdash; Cases</p>
+    <h2>Pick a capture, move the light</h2>
+    <div class="caseview">
+      <div class="cv-stage">
+        <canvas id="rl" width="320" height="240"></canvas>
+        <div class="cv-modes">
+          <button class="on" data-mode="relight">relight</button>
+          <button data-mode="normal">normal</button>
+          <button data-mode="albedo">albedo</button>
+        </div>
+      </div>
+      <aside class="cv-info">
+        <h3 id="cv-name">plate</h3>
+        <p id="cv-desc">Embossed surface with a printed checker pattern; the
+          shape has to be recovered without trusting the colour.</p>
+        <dl class="cv-stats">
+          <div><dt>confidence</dt><dd id="cv-conf">100%</dd></div>
+          <div><dt>mean error</dt><dd id="cv-mean">0.31&deg;</dd></div>
+          <div><dt>p95</dt><dd id="cv-p95">0.67&deg;</dd></div>
+        </dl>
+        <p class="cv-note" id="cv-note">All figures are the RTL output against
+          the ray tracer's own normals.</p>
+        <p class="cv-hint">Drag the image to steer the light; let go and it
+          keeps orbiting. The normal and albedo views are the chip's other two
+          outputs for the same capture.</p>
+      </aside>
+    </div>
+    <div class="thumbs" id="rl-thumbs">
+      <button class="on" data-case="plate"
+        data-name="plate"
+        data-desc="Embossed surface with a printed checker pattern; the shape has to be recovered without trusting the colour."
+        data-conf="100%" data-mean="0.31&deg;" data-p95="0.67&deg;"
+        data-note="Angular error against the ray tracer's own normals, which neither the model nor the RTL has seen.">
+        <img src="img/light/plate_thumb.png" alt=""><em>plate</em></button>
+      <button data-case="studio"
+        data-name="studio"
+        data-desc="Same relief, captured with specular glints, lens falloff and sensor grain - closer to a real photograph."
+        data-conf="99.9%" data-mean="1.54&deg;" data-p95="3.78&deg;"
+        data-note="The model assumes a Lambertian surface, so the highlights cost accuracy: 0.3&deg; becomes 1.5&deg;.">
+        <img src="img/light/studio_thumb.png" alt=""><em>studio</em></button>
+      <button data-case="sphere"
+        data-name="sphere"
+        data-desc="Ring illumination around the lens. The self-occluded rim cannot be recovered and is flagged instead."
+        data-conf="94%" data-mean="0.22&deg;" data-p95="0.40&deg;"
+        data-note="Confidence drops exactly where the rim turns away - the one place a three-light solve has no information.">
+        <img src="img/light/sphere_thumb.png" alt=""><em>sphere</em></button>
+      <button data-case="bumps"
+        data-name="bumps"
+        data-desc="High-frequency relief with uniform albedo: all the information is in the shading."
+        data-conf="100%" data-mean="0.23&deg;" data-p95="0.43&deg;"
+        data-note="A virtual light at a grazing angle is what makes the relief visible; the albedo image is flat by design.">
+        <img src="img/light/bumps_thumb.png" alt=""><em>bumps</em></button>
+      <button data-case="real"
+        data-name="real capture"
+        data-desc="A figurine from the Harvard photometric stereo set - three of its 20 calibrated lights stacked into one RGB image."
+        data-conf="99.9%" data-mean="2.83&deg;" data-p95="5.05&deg;"
+        data-note="Real photographs with ground-truth normals: 2.83&deg; median, 5.05&deg; mean over the object. The RTL is bit-exact on all 320,000 pixels.">
+        <img src="img/light/real_thumb.png" alt=""><em>real capture</em></button>
+    </div>
+  </div>
+</section>
+
+<section class="sec sec--soft" id="speed">
+  <div class="wrap">
+    <p class="eyebrow">07 &mdash; Speed</p>
+    <h2>The same frame, five machines</h2>
+    <p class="lede">
+      Each row re-lights the same 320&times;240 surface at its own frame rate.
+      The chip runs nine frames ahead of your screen; Python manages two a second.
+    </p>
+    <div class="race-wrap">
+    <table class="race" id="race">
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th class="vp">Live viewport</th>
+          <th class="num">Frames/s</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="lane" data-fps="1107">
+          <td class="lane-name"><b>ChromaPS</b><em>~85 MHz, typical corner</em></td>
+          <td class="vp"><canvas width="96" height="72"></canvas></td>
+          <td class="lane-rate"><b>1,107</b></td>
+        </tr>
+        <tr class="lane" data-fps="521">
+          <td class="lane-name"><b>ChromaPS</b><em>40 MHz, signed off</em></td>
+          <td class="vp"><canvas width="96" height="72"></canvas></td>
+          <td class="lane-rate"><b>521</b></td>
+        </tr>
+        <tr class="lane" data-fps="75">
+          <td class="lane-name"><b>numpy, this laptop</b><em>measured</em></td>
+          <td class="vp"><canvas width="96" height="72"></canvas></td>
+          <td class="lane-rate"><b>75</b></td>
+        </tr>
+        <tr class="lane" data-fps="8.7">
+          <td class="lane-name"><b>Cortex-M4 @ 168 MHz</b><em>cycle-budget estimate</em></td>
+          <td class="vp"><canvas width="96" height="72"></canvas></td>
+          <td class="lane-rate"><b>8.7</b></td>
+        </tr>
+        <tr class="lane" data-fps="2.3">
+          <td class="lane-name"><b>scalar Python</b><em>measured</em></td>
+          <td class="vp"><canvas width="96" height="72"></canvas></td>
+          <td class="lane-rate"><b>2.3</b></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="muted" style="margin-top:20px">
+      40&nbsp;Mpixel/s over 76,800-pixel frames is 521&nbsp;frames per second, so
+      the rotation reads as a strobe, not a turn. 640&times;480 at 30&nbsp;fps
+      needs 9.2&nbsp;Mpixel/s: 4.3&times; headroom here, about fourteen
+      Cortex-M4s.
+    </p>
+  </div>
+</section>
+
+<section class="sec sec--light" id="reproduce">
+  <div class="wrap">
+    <p class="eyebrow">08 &mdash; Reproduce</p>
+    <h2>Everything runs on a laptop</h2>
+    <p class="muted">
+      Icarus Verilog for simulation, LibreLane for the flow, sky130A for the
+      process. No proprietary tools in the loop.
+    </p>
+<pre>make model     # ray tracer -> stimulus, golden model -> expected output
+make rtl       # RTL simulation -> output hex
+make compare   # byte diff, writes the report
+make test      # every case end to end
+make pnr       # LibreLane, RTL to GDSII (~40 min)
+
+# your own photograph: one shot under R/G/B LEDs, or three shots
+python3 model/photo.py --single IMG_0042.jpg --out stim/mine</pre>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="foot-row">
+      <div>ChromaPS &middot; Apache-2.0</div>
+      <div>sky130A &middot; LibreLane 2.4.2</div>
+      <div>RTL and Python model bit-exact on 537,632 simulated + 320,000 real pixels</div>
+    </div>
+  </div>
+</footer>
+
+
+<script>
+(() => {
+  document.documentElement.classList.add('js');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------------- schedule animation ---------------- */
+  const svg  = document.getElementById('schedule');
+  const bars  = svg ? [...svg.querySelectorAll('.bar')] : [];
+  const fills = svg ? [...svg.querySelectorAll('.fill')] : [];
+  const ph    = document.getElementById('ph');
+  const outs  = svg ? [...svg.querySelectorAll('.out-label')] : [];
+  const X0 = 132, SPAN = (1000 - 132) / 50;
+  const DUR = 5200, HOLD = 1600;
+  let raf = 0, t0 = 0;
+
+  function paint(t) {
+    const cyc = Math.min(50, t * 50);
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i], f = fills[i];
+      const s = +b.dataset.s, e = +b.dataset.e;
+      const p = Math.max(0, Math.min(1, (cyc - s) / (e - s)));
+      f.setAttribute('width', (p * +b.dataset.w).toFixed(2));
+    }
+    if (ph) {
+      ph.setAttribute('transform', 'translate(' + (cyc * SPAN).toFixed(2) + ' 0)');
+      ph.style.opacity = 1;
+    }
+    for (const o of outs) o.classList.toggle('lit', t >= 0.999);
+  }
+
+  function loop(ts) {
+    if (!t0) t0 = ts;
+    const e = ts - t0;
+    paint(Math.min(1, e / DUR));
+    if (e < DUR + HOLD) {
+      raf = requestAnimationFrame(loop);
+    } else {
+      t0 = 0;
+      raf = requestAnimationFrame(loop);
+    }
+  }
+
+  function start() {
+    if (raf) return;
+    if (reduce) { paint(1); if (ph) ph.style.opacity = 0; return; }
+    t0 = 0;
+    raf = requestAnimationFrame(loop);
+  }
+
+  function stop() {
+    if (raf) cancelAnimationFrame(raf);
+    raf = 0;
+  }
+
+  if (reduce && svg) paint(1);
+
+  /* ---------------- reveal + scrollspy ---------------- */
+  const sections = [...document.querySelectorAll('main > section')];
+  sections.forEach(s => s.classList.add('reveal'));
+
+  if (!('IntersectionObserver' in window)) {
+    sections.forEach(s => s.classList.add('in'));
+  } else {
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (e.target === svg) {
+          e.isIntersecting ? start() : stop();
+        } else if (e.isIntersecting) {
+          e.target.classList.add('in');
+        }
+      }
+    }, { rootMargin: '0px 0px -10% 0px', threshold: 0.06 });
+
+    sections.forEach(s => io.observe(s));
+    if (svg) io.observe(svg);
+
+    const links = [...document.querySelectorAll('.nav-links a[href^="#"]')];
+    const targets = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+    const spy = new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id));
+      }
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    targets.forEach(t => spy.observe(t));
+  }
+})();
+</script>
+
+
+<script>
+(() => {
+  const canvas = document.getElementById('rl');
+  if (!canvas) return;
+  const W = canvas.width, H = canvas.height;
+  const ctx = canvas.getContext('2d');
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const state = { az: -0.95, el: 0.55, drag: false, resume: 0, data: null, mode: 'relight' };
+  const out = ctx.createImageData(W, H);
+  const thumbs = [...document.querySelectorAll('#rl-thumbs button')];
+  const modeBtns = [...document.querySelectorAll('.cv-modes button')];
+  const loaded = {};
+  const el = {
+    name: document.getElementById('cv-name'),
+    desc: document.getElementById('cv-desc'),
+    conf: document.getElementById('cv-conf'),
+    mean: document.getElementById('cv-mean'),
+    p95: document.getElementById('cv-p95'),
+    note: document.getElementById('cv-note'),
+  };
+
+  function render() {
+    const d = state.data;
+    if (!d) return;
+    const px = d.data, dst = out.data;
+    const lx = Math.sin(state.el) * Math.cos(state.az);
+    const ly = Math.sin(state.el) * Math.sin(state.az);
+    const lz = Math.cos(state.el);
+    const mode = state.mode;
+    for (let i = 0, n = px.length; i < n; i += 4) {
+      if (mode === 'normal') {
+        dst[i] = px[i]; dst[i + 1] = px[i + 1]; dst[i + 2] = px[i + 2]; dst[i + 3] = 255;
+        continue;
+      }
+      let v;
+      if (mode === 'albedo') {
+        v = px[i + 3];
+      } else {
+        const nx = (px[i] - 128) * 0.007874;
+        const ny = (px[i + 1] - 128) * 0.007874;
+        const nz = (px[i + 2] - 128) * 0.007874;
+        let dot = nx * lx + ny * ly + nz * lz;
+        if (dot < 0) dot = 0;
+        v = dot * px[i + 3];
+      }
+      dst[i] = v; dst[i + 1] = v; dst[i + 2] = v; dst[i + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+
+    if (mode === 'relight') {
+      const cx = W - 30, cy = 30, r = 13, s = Math.sin(state.el);
+      ctx.strokeStyle = 'rgba(210,118,75,.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#d2764b';
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(state.az) * r * s, cy + Math.sin(state.az) * r * s, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function load(name) {
+    if (loaded[name]) {
+      state.data = loaded[name];
+      render();
+      return;
+    }
+    const tag = document.createElement('script');
+    tag.src = 'img/light/' + name + '.js';
+    tag.onload = () => {
+      const entry = window.LIGHT && window.LIGHT[name];
+      if (!entry) return;
+      const bin = atob(entry.d);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      loaded[name] = { data: bytes, width: entry.w, height: entry.h };
+      state.data = loaded[name];
+      render();
+    };
+    document.head.appendChild(tag);
+  }
+
+  function setFromEvent(e) {
+    const r = canvas.getBoundingClientRect();
+    const x = (e.clientX - r.left) / r.width;
+    const y = (e.clientY - r.top) / r.height;
+    state.az = (x * 2 - 1) * Math.PI;
+    state.el = Math.max(0.08, Math.min(1.4, (1 - y) * 1.45 + 0.05));
+    render();
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (state.mode !== 'relight') return;
+    state.drag = true;
+    canvas.setPointerCapture(e.pointerId);
+    setFromEvent(e);
+  });
+  canvas.addEventListener('pointermove', (e) => { if (state.drag) setFromEvent(e); });
+  const release = () => { state.drag = false; state.resume = performance.now() + 1800; };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+  canvas.addEventListener('pointerleave', () => { if (state.drag) release(); });
+
+  thumbs.forEach((b) => b.addEventListener('click', () => {
+    thumbs.forEach((o) => o.classList.toggle('on', o === b));
+    const d = b.dataset;
+    el.name.textContent = d.name;
+    el.desc.textContent = d.desc;
+    el.conf.textContent = d.conf;
+    el.mean.innerHTML = d.mean;
+    el.p95.innerHTML = d.p95;
+    el.note.textContent = d.note;
+    load(d.case);
+  }));
+
+  modeBtns.forEach((b) => b.addEventListener('click', () => {
+    modeBtns.forEach((o) => o.classList.toggle('on', o === b));
+    state.mode = b.dataset.mode;
+    render();
+  }));
+
+  let last = performance.now();
+  function tick(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    if (!reduce && state.mode === 'relight' && !state.drag && now > state.resume) {
+      state.az += 0.5 * dt;
+      render();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  load('plate');
+  requestAnimationFrame(tick);
+})();
+</script>
+
+
+<script>
+(() => {
+  const race = document.getElementById('race');
+  if (!race) return;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const first = race.querySelector('canvas');
+  const W = first.width, H = first.height, SW = 320, SH = 240;
+
+  const lanes = [...race.querySelectorAll('.lane')].map((el) => {
+    const canvas = el.querySelector('canvas');
+    const ctx = canvas.getContext('2d');
+    return {
+      ctx, fps: parseFloat(el.dataset.fps), acc: 0, angle: -1.2,
+      img: ctx.createImageData(W, H), ready: false,
+    };
+  });
+
+  let nx, ny, nz, alb;
+
+  function resample(d) {
+    nx = new Float32Array(W * H);
+    ny = new Float32Array(W * H);
+    nz = new Float32Array(W * H);
+    alb = new Float32Array(W * H);
+    for (let y = 0; y < H; y++) {
+      const sy = Math.min(SH - 1, (y * SH / H) | 0);
+      for (let x = 0; x < W; x++) {
+        const sx = Math.min(SW - 1, (x * SW / W) | 0);
+        const k = (sy * SW + sx) * 4, j = y * W + x;
+        nx[j] = (d[k] - 128) * 0.007874;
+        ny[j] = (d[k + 1] - 128) * 0.007874;
+        nz[j] = (d[k + 2] - 128) * 0.007874;
+        alb[j] = d[k + 3];
+      }
+    }
+  }
+
+  function draw(lane) {
+    const px = lane.img.data;
+    const lx = Math.sin(lane.angle) * 0.62;
+    const ly = Math.cos(lane.angle) * 0.62;
+    const lz = 0.78;
+    for (let j = 0, n = W * H; j < n; j++) {
+      let dot = nx[j] * lx + ny[j] * ly + nz[j] * lz;
+      if (dot < 0) dot = 0;
+      const v = dot * alb[j];
+      const k = j * 4;
+      px[k] = v; px[k + 1] = v; px[k + 2] = v; px[k + 3] = 255;
+    }
+    lane.ctx.putImageData(lane.img, 0, 0);
+  }
+
+  let visible = true, last = 0;
+
+  function tick(now) {
+    const dt = Math.min(0.1, (now - last) / 1000);
+    last = now;
+    if (visible) {
+      for (const lane of lanes) {
+        if (reduce) continue;
+        lane.acc += dt;
+        const due = Math.floor(lane.acc * lane.fps);
+        if (due > 0) {
+          lane.acc -= due / lane.fps;
+          lane.angle += due * 0.05;
+          draw(lane);
+        }
+      }
+      if (reduce && !lanes[0].ready) {
+        for (const lane of lanes) { draw(lane); lane.ready = true; }
+      }
+    }
+    requestAnimationFrame(tick);
+  }
+
+  function boot(d) {
+    resample(d);
+    for (const lane of lanes) { lane.angle = -1.2; draw(lane); }
+    last = performance.now();
+    requestAnimationFrame(tick);
+  }
+
+  const tag = document.createElement('script');
+  tag.src = 'img/light/plate.js';
+  tag.onload = () => {
+    const e = window.LIGHT && window.LIGHT.plate;
+    if (!e) return;
+    const bin = atob(e.d);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    boot(bytes);
+  };
+  document.head.appendChild(tag);
+
+  new IntersectionObserver((es) => {
+    for (const e of es) visible = e.isIntersecting;
+  }, { threshold: 0.05 }).observe(race);
+})();
+</script>
+
+
+<script>
+(() => {
+  const stage = document.getElementById('die-stage');
+  const legend = document.getElementById('die-legend');
+  const probe = document.getElementById('die-probe');
+  const slider = document.getElementById('die-alpha');
+  if (!stage || !legend) return;
+
+  const layers = [...stage.querySelectorAll('.die-layer')];
+  const rows = [...legend.querySelectorAll('.dl-row')];
+  const layerOf = (name) => layers.find((l) => l.dataset.layer === name);
+
+  function sync() {
+    stage.classList.toggle('has-layers', layers.some((l) => l.classList.contains('on')));
+  }
+
+  rows.forEach((row) => {
+    const img = layerOf(row.dataset.layer);
+    if (!img) return;
+    row.addEventListener('pointerenter', () => {
+      if (!img.classList.contains('on')) img.style.opacity = 0.4;
+    });
+    row.addEventListener('pointerleave', () => {
+      if (!img.classList.contains('on')) img.style.opacity = '';
+    });
+    row.addEventListener('click', () => {
+      const on = !row.classList.contains('on');
+      img.style.opacity = '';
+      row.classList.toggle('on', on);
+      img.classList.toggle('on', on);
+      sync();
+    });
+  });
+
+  if (slider) {
+    const apply = () => stage.style.setProperty('--ly', (slider.value / 100).toFixed(2));
+    slider.addEventListener('input', apply);
+    apply();
+  }
+
+  /* ---- hover probe ---- */
+  const tool = document.createElement('script');
+  tool.src = 'img/die/probe.js';
+  tool.onload = () => {
+    const P = window.DIE_PROBE;
+    if (!P) return;
+    const n = P.w;
+    const binUm = P.bin_um;
+    stage.addEventListener('pointermove', (e) => {
+      const r = stage.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width;
+      const y = (e.clientY - r.top) / r.height;
+      if (x < 0 || x > 1 || y < 0 || y > 1) return;
+      const i = Math.min(n - 1, Math.floor(x * n));
+      const j = Math.min(P.h - 1, Math.floor(y * P.h));
+      const k = (P.h - 1 - j) * n + i;
+      const pW = P.power[k] / 1000;
+      const route = P.routing[k];
+      const cells = P.cells[k];
+      probe.innerHTML =
+        '<b>' + (i * binUm).toFixed(0) + ', ' + ((P.h - j) * binUm).toFixed(0) + ' &micro;m</b><br>' +
+        'power ' + pW.toFixed(2) + ' &micro;W<br>' +
+        'routing ' + route.toFixed(0) + ' &micro;m<br>' +
+        cells + ' cells';
+      const px = Math.min(Math.max(e.clientX - r.left + 14, 8), r.width - 150);
+      const py = Math.min(Math.max(e.clientY - r.top + 14, 8), r.height - 78);
+      probe.style.left = px + 'px';
+      probe.style.top = py + 'px';
+      probe.classList.add('on');
+    });
+    stage.addEventListener('pointerleave', () => probe.classList.remove('on'));
+  };
+  document.head.appendChild(tool);
+
+  sync();
+})();
+</script>
+
+</body>
+</html>
